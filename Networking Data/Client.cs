@@ -51,7 +51,7 @@ namespace Swaelo_Server
             //read in the packet data send from the client
             byte[] PacketData = new byte[PacketSize];
             Array.Copy(ClientBuffer, PacketData, PacketSize);
-            PacketReader.HandlePacket(ClientID, PacketData);
+            Main.HandlePacket(ClientID, PacketData);
             //start listening for new packets again
             ClientStream.BeginRead(ClientBuffer, 0, ClientSocket.ReceiveBufferSize, ReadPacket, null);
         }

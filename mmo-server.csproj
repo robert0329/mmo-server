@@ -90,11 +90,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Entities\GameEntity.cs" />
-    <Compile Include="PacketReader.cs">
+    <Compile Include="Main.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="PacketReader.Designer.cs">
-      <DependentUpon>PacketReader.cs</DependentUpon>
+    <Compile Include="Main.Designer.cs">
+      <DependentUpon>Main.cs</DependentUpon>
     </Compile>
     <Compile Include="Scene Navigation\NavMeshDictionary.cs" />
     <Compile Include="Scene Navigation\NavMeshNodes.cs" />
@@ -125,12 +125,6 @@
     <Compile Include="Scene Navigation\NavMeshNodeIDGenerator.cs" />
     <Compile Include="Server Logic\ServerPhysics.cs" />
     <Compile Include="Server Logic\ServerTerrainCollision.cs" />
-    <Compile Include="Server.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Server.Designer.cs">
-      <DependentUpon>Server.cs</DependentUpon>
-    </Compile>
     <Compile Include="WorldRenderer.cs" />
     <Compile Include="BEPU\AffineTransform.cs" />
     <Compile Include="BEPU\BallSocketJoint.cs" />
@@ -580,11 +574,8 @@
     <Content Include="Dependencies\ByteBuffer.dll" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="PacketReader.resx">
-      <DependentUpon>PacketReader.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Server.resx">
-      <DependentUpon>Server.cs</DependentUpon>
+    <EmbeddedResource Include="Main.resx">
+      <DependentUpon>Main.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>

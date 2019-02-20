@@ -12,7 +12,7 @@ namespace Swaelo_Server
         static void Main(string[] args)
         {
             Console.Title = "MMO" + " -- Players online: " + 0 + " / Max online: " + 0 + "";
-            System.Windows.Forms.Application.Run(new Server());
+            System.Windows.Forms.Application.Run(new Main());
         }
         
     }

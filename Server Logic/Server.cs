@@ -13,7 +13,7 @@ namespace Swaelo_Server
         public static void InitializeServer()
         {
             Console.WriteLine("Starting server...");
-            PacketReader.InitializePackets();   //register packet handler functions
+            //Main.InitializePackets();   //register packet handler functions
             ServerSocket.Start();   //start the server tcp
             ServerSocket.BeginAcceptTcpClient(new AsyncCallback(OnClientConnect), null);    //start listening for new client connections
         }

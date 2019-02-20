@@ -5,24 +5,127 @@ using System.ComponentModel;
 using System.Data;
 using System.Drawing;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Swaelo_Server
 {
-    public partial class PacketReader : Form
+    public partial class Main : Form
     {
-        public PacketReader()
+        public Main()
         {
             InitializeComponent();
         }
-        private void PacketReader_Load(object sender, EventArgs e)
+        #region Server
+        static TcpListener ServerSocket = new TcpListener(IPAddress.Any, 5500);
+        public static bool ServerOpen = true;
+        private static void OnClientConnect(IAsyncResult result)
         {
-            UpdateList("Has entered the world:" + "Robert", true);
+            TcpClient NewClient = ServerSocket.EndAcceptTcpClient(result);  //Stop accepting new connections into this socket
+            ServerSocket.BeginAcceptTcpClient(new AsyncCallback(OnClientConnect), null);    //start accpeting new connections in new callback
+            ClientManager.CreateNewConnection(NewClient);   //map the new client connection into our dictionary in the client manager class
         }
-        
+        public static void NetworkingThreadProc(Object Data)
+        {
+            NetworkingThreadEndDelegate NetworkingEndDelegate = Data as NetworkingThreadEndDelegate;
+            if (NetworkingEndDelegate != null)
+                NetworkingEndDelegate();
+        }
+        delegate void NetworkingThreadEndDelegate();
+        protected void NetworkingThreadEnd()
+        {
+            UpdateListView("Running", "Networking thread: ", true);
+        }
+        public static void PhysicsThreadProc(Object Data)
+        {
+            Globals.game = new WorldRenderer();
+            Globals.game.Run();
+            PhysicsThreadEndDelegate PhysicsEndDelegate = Data as PhysicsThreadEndDelegate;
+            if (PhysicsEndDelegate != null)
+                PhysicsEndDelegate();
+        }
+        delegate void PhysicsThreadEndDelegate();
+        protected void PhysicsThreadEnd()
+        {
+            UpdateListView("Stop", "Physics thread: ", true);
+        }
+        delegate void SetStatusCallback(String text);
+        public void SetStatus(String text)
+        {
+            if (statusStrip1.InvokeRequired)
+            {
+                SetStatusCallback d = new SetStatusCallback(SetStatus);
+                this.Invoke(d, new object[] { text });
+            }
+            else
+            {
+                tsslConnections.Text = text;
+            }
+        }
+        private void Server_Load(object sender, EventArgs e)
+        {
+            tsslInfo.Text = "Waiting!";
+        }
+        private void btn_run_Click(object sender, EventArgs e)
+        {
+            MySQL.mySQLSettings.user = "root";
+            MySQL.mySQLSettings.password = passwordtxt.Text;
+            MySQL.mySQLSettings.server = Hosttxt.Text;
+            MySQL.mySQLSettings.database = databasetxt.Text;
+
+            if (MySQL.ConnectToMySQL() == true)
+            {
+                try
+                {
+                    InitializePackets();   //register packet handler functions
+                    ServerSocket.Start();   //start the server tcp
+                    ServerSocket.BeginAcceptTcpClient(new AsyncCallback(OnClientConnect), null);
+
+                    databasetxt.Enabled = Hosttxt.Enabled = passwordtxt.Enabled = btn_run.Enabled = Porttxt.Enabled = false;
+                    Thread NetworkingThread = new Thread(new ParameterizedThreadStart(NetworkingThreadProc));
+                    NetworkingThreadEndDelegate NetworkingEndDelegate = NetworkingThreadEnd;
+                    NetworkingThread.Start(NetworkingEndDelegate);
+                    Thread PhysicsThread = new Thread(new ParameterizedThreadStart(PhysicsThreadProc));
+                    PhysicsThreadEndDelegate PhysicsEndDelegate = PhysicsThreadEnd;
+                    PhysicsThread.Start(PhysicsEndDelegate);
+
+                    Console.Title = "MMO" + " -- Players online: " + 0 + " / Max online: " + 0 + "";
+                    string msg = "Server:" + " Online";
+                    tsslInfo.Text = "Running!";
+                    SetStatus(msg);
+                }
+                catch (Exception)
+                {
+                    throw;
+                }
+            }
+            else
+            {
+                string msg = "MySql:" + " Failed";
+                tsslInfo.Text = "Error!";
+                SetStatus(msg);
+            }
+        }
+        public void UpdateListView(string stat, string msj, bool status)
+        {
+            lvClients.Invoke((MethodInvoker)delegate {
+                if (status == true)
+                {
+                    ListViewItem lvi;
+                    lvi = new ListViewItem(stat, 0);
+                    var values = msj.Split(':');
+                    lvi.SubItems.Add(msj.Substring(0, msj.Length - values[values.Count() - 1].Length - 1));
+                    lvi.SubItems.Add(values[values.Count() - 1]);
+                    lvClients.Items.Add(lvi);
+                }
+            });
+        }
+        #endregion
+        #region PacketReader
         public delegate void Packet(int index, byte[] data);
         public static Dictionary<int, Packet> Packets = new Dictionary<int, Packet>();
         public TcpClient ClientSocket;
@@ -31,7 +134,7 @@ namespace Swaelo_Server
         public ByteBuffer.ByteBuffer Reader;
         public static int Count = 0;
         public static int MaxOn = 0;
-        public static void InitializePackets()
+        public void InitializePackets()
         {
             Packets.Add((int)ClientPacketType.ConsoleMessage, HandleConsoleMessage);  //Prints a message in the clients debug log
             Packets.Add((int)ClientPacketType.PlayerMessage, HandlePlayerMessage);
@@ -47,7 +150,6 @@ namespace Swaelo_Server
             Packets.Add((int)ClientPacketType.AccountLogoutNotice, HandleAccountLogout);
         }
 
-        //Gets a packet from the client, passes it onto whatever function is registered to handle whatever type of packet it is
         public static void HandlePacket(int ClientID, byte[] PacketData)
         {
             ByteBuffer.ByteBuffer PacketReader = new ByteBuffer.ByteBuffer();   //start the packet reader
@@ -89,8 +191,7 @@ namespace Swaelo_Server
             }
             return true;
         }
-
-        //Gets a message sent to us from one of the clients
+        
         public static void HandleConsoleMessage(int ClientID, byte[] PacketData)
         {
             //Console.WriteLine("getting a message from one of the clients");
@@ -103,8 +204,7 @@ namespace Swaelo_Server
             //Close the packet reader
             PacketReader.Dispose();
         }
-
-        //Clients send chat messages to us and we send them to everyone else
+        
         public static void HandlePlayerMessage(int ClientID, byte[] PacketData)
         {
             //Read the message info from the network packet
@@ -118,8 +218,7 @@ namespace Swaelo_Server
             List<Client> OtherClients = ClientManager.GetActiveClientsExceptFor(ClientID);
             PacketSender.SendPlayersMessage(OtherClients, CharacterName, Message);
         }
-
-        //Gets a request from a client to register a new account <int:PacketType, string:Username, string:Password>
+        
         public static void HandleRegisterRequest(int ClientID, byte[] PacketData)
         {
             //Extract the account credentials from the packet data
@@ -166,7 +265,7 @@ namespace Swaelo_Server
                 PacketSender.SendRegisterReply(ClientID, true, "Account has been created");
             }
         }
-        //Gets a request from a client to log into an account <int:PacketType, string:Username, string:Password>
+
         public static void HandleLoginRequest(int ClientID, byte[] PacketData)
         {
             //Extract the account credentials from the packet data
@@ -206,7 +305,6 @@ namespace Swaelo_Server
             ClientManager.Clients[ClientID].AccountName = Name;
             PacketSender.SendLoginReply(ClientID, true, "Login success");
 
-
         }
 
         public static void HandleAccountLogout(int ClientID, byte[] PacketData)
@@ -218,8 +316,7 @@ namespace Swaelo_Server
             Client.AccountName = "";
             Client.CurrentCharacterName = "";
         }
-
-        //Trys to create a new character for the user and tells them how it went
+        
         public static void HandleCreateCharacterRequest(int ClientID, byte[] PacketData)
         {
             //Open the packet and extract all the relevant information, then close it
@@ -244,12 +341,8 @@ namespace Swaelo_Server
             Globals.database.RegisterNewCharacter(AccountName, CharacterName, IsMale);
             PacketSender.SendCreateCharacterReply(ClientID, true, "Character Created");
         }
-        public static void EventoIntervalo(Object source, System.Timers.ElapsedEventArgs e)
-        {
-            Console.WriteLine("Evento convocado a las: {0}", e.SignalTime);
-        }
-        //client wants to enter into the game world with their selected character
-        public static void HandleEnterWorldRequest(int ClientID, byte[] PacketData)
+        
+        public void HandleEnterWorldRequest(int ClientID, byte[] PacketData)
         {
             //Extract information from the packet and save it into this clients class in the client manager list
             ByteBuffer.ByteBuffer PacketReader = new ByteBuffer.ByteBuffer();
@@ -263,7 +356,7 @@ namespace Swaelo_Server
             PacketReader.Dispose();
             //Send this player into the world with their character now
             Console.WriteLine(Client.AccountName + ":" + Client.CurrentCharacterName + " has entered the world");
-            
+            UpdateList("has entered the world: "+ Client.AccountName, "Joinned", true);
             PacketSender.SendPlayerEnterWorld(ClientID);
 
             //Give information to the new player about any entities that are active in the world
@@ -278,8 +371,7 @@ namespace Swaelo_Server
             List<Client> OtherActivePlayers = ClientManager.GetActiveClientsExceptFor(ClientID);
             PacketSender.SendListSpawnOther(OtherActivePlayers, Client.CurrentCharacterName, Client.CharacterPosition);
         }
-
-        //Sends to the client all the infor for any characters they have created so far
+        
         public static void HandleGetCharacterDataRequest(int ClientID, byte[] PacketData)
         {
             //Extract the account credentials from the packet data
@@ -291,7 +383,6 @@ namespace Swaelo_Server
             PacketSender.SendCharacterData(ClientID, Username);
         }
 
-        //Gets updated character information data from one of the connect clients, this needs to be sent out to everyone else so they know where that character is at
         public static void HandlePlayerUpdate(int ClientID, byte[] PacketData)
         {
             //Extract the new position data from the network packet
@@ -352,20 +443,28 @@ namespace Swaelo_Server
             Count--;
             Console.Title = "MMO" + " -- Players online: " + Count + " / Max online: " + MaxOn + "";
         }
-      
-        public void UpdateList(string ip, bool status)
+
+        public void UpdateList(string ip, string request, bool status)
         {
-            lvClients.Invoke((MethodInvoker)delegate {
+            listView1.Invoke((MethodInvoker)delegate {
                 if (status == true)
                 {
-                    ListViewItem lvi = new ListViewItem(" Connected", 0);
+                    ListViewItem lvi = new ListViewItem(request, 0);
                     var values = ip.Split(':');
                     lvi.SubItems.Add(ip.Substring(0, ip.Length - values[values.Count() - 1].Length - 1));
                     lvi.SubItems.Add(values[values.Count() - 1]);
-                    lvClients.Items.Add(lvi);
+                    listView1.Items.Add(lvi);
                 }
             });
         }
-        
+        #endregion
+
+        private void Main_Load(object sender, EventArgs e)
+        {
+            this.Text = "Mmo " + "Players Online: " + Count + " MaxOnline: " + MaxOn;
+        }
     }
+
+
 }
+
